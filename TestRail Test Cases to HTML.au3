@@ -36,8 +36,6 @@ Global $testrail_username_input = GUICtrlCreateInput(IniRead($ini_filename, "mai
 GUICtrlCreateLabel("Password", 20, 50, 60, 20)
 Global $testrail_password_input = GUICtrlCreateInput("", 100, 50, 250, 20, $ES_PASSWORD)
 Global $testrail_authenticate_button = GUICtrlCreateButton("Authenticate", 100, 70, 80, 20)
-;GUICtrlCreateLabel("TestRail Project", 20, 70, 100, 20)
-;Global $testrail_project_combo = GUICtrlCreateCombo("", 140, 70, 250, 20, BitOR($CBS_DROPDOWNLIST, $WS_VSCROLL))
 GUICtrlCreateGroup("", -99, -99, 1, 1)
 
 GUICtrlCreateGroup("TestRail Projects", 390, 10, 450, 180)
@@ -125,6 +123,7 @@ While 1
 			EndIf
 
 			enable_gui()
+
 
 
 		Case $export_button
@@ -286,16 +285,23 @@ Func Create_Case_HTML($confluence_html = False)
 			GUICtrlSetData($progress, ($selected_case_num / $num_selected_cases) * 100)
 
 			Local $id = _GUICtrlListView_GetItemText($testrail_case_listview, $each_case_index, 0)
-			Local $report_filename = @ScriptDir & "\TestRail " & $id & ".html"
-			GUICtrlSetData($status_input, "Exporting TestRail " & $id & ".html ... ")
+			Local $report_filename = "TestRail " & $id & ".html"
+			GUICtrlSetData($status_input, "Exporting " & $report_filename & " ... ")
 
-			Local $case_arr = _TestRailGetCaseIDTitleObjectivesPreconditionsNotesSteps($id)
+			Local $case_arr = _TestRailGetCaseIDTitleTestScenarioIDOwnerObjectivesPreconditionsNotesSteps($id)
 ;			_ArrayDisplay($case_arr)
 
-			$case_arr[1][0] = _TestRailMarkdownToHTML($case_arr[1][0])
-			$case_arr[2][0] = _TestRailMarkdownToHTML($case_arr[2][0])
-			$case_arr[3][0] = _TestRailMarkdownToHTML($case_arr[3][0])
-			$case_arr[4][0] = _TestRailMarkdownToHTML($case_arr[4][0])
+			$report_filename = "TestRail " & $case_arr[2][0]
+
+			if StringInStr($report_filename, ".") = 0 Then
+
+				$report_filename = $report_filename & ".html"
+			EndIf
+
+			for $i = 1 to 6
+
+				$case_arr[$i][0] = _TestRailMarkdownToHTML($case_arr[$i][0])
+			Next
 
 			$html = 			""
 
@@ -330,15 +336,15 @@ Func Create_Case_HTML($confluence_html = False)
 								"</head>" & @CRLF & _
 								"<body>" & @CRLF & _
 								"<table>" & @CRLF & _
-								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "trb" & $double_quotes & ">Document Name:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Product Owner:</td><td class=" & $double_quotes & "tr" & $double_quotes & "></td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Release Date:</td><td colspan=" & $double_quotes & "3" & $double_quotes & "></td></tr>" & @CRLF & _
+								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "trb" & $double_quotes & ">Document Name:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $report_filename & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Product Owner:</td><td class=" & $double_quotes & "tr" & $double_quotes & ">" & $case_arr[3][0] & "</td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Release Date:</td><td colspan=" & $double_quotes & "3" & $double_quotes & "></td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Developer:</td><td class=" & $double_quotes & "tr" & $double_quotes & "></td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Unit(s):</td><td class=" & $double_quotes & "ts" & $double_quotes & "></td><td class=" & $double_quotes & "trb" & $double_quotes & ">Version / Build:</td><td></td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Test Objective:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[2][0] & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Test Objective:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[4][0] & "</td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prepared By / Date:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Tested By / Test Date:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Description:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[1][0] & "</td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prerequisite:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[3][0] & "</td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Role:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[4][0] & "</td></tr></table>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prerequisite:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[5][0] & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Role:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[6][0] & "</td></tr></table>" & @CRLF & _
 								"<br>" & @CRLF & _
 								"<table class=" & $double_quotes & "b" & $double_quotes & ">" & @CRLF & _
 								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "tcbc" & $double_quotes & ">Step #</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Steps</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Expected Result</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Actual Result</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Remarks</td></tr>" & @CRLF
@@ -348,7 +354,7 @@ Func Create_Case_HTML($confluence_html = False)
 
 			Local $step_num = 0
 
-			for $i = 5 to (UBound($case_arr) - 1)
+			for $i = 7 to (UBound($case_arr) - 1)
 
 				$step_num = $step_num + 1
 				$case_arr[$i][0] = _TestRailMarkdownToHTML($case_arr[$i][0])
@@ -357,8 +363,8 @@ Func Create_Case_HTML($confluence_html = False)
 			Next
 
 			$html = $html &			"</table></body></html>" & @CRLF
-			FileDelete($report_filename)
-			FileWrite($report_filename, $html)
+			FileDelete(@ScriptDir & "\" & $report_filename)
+			FileWrite(@ScriptDir & "\" & $report_filename, $html)
 			GUICtrlSetData($status_input, "")
 
 		Next
