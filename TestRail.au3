@@ -266,9 +266,72 @@ Func _TestRailGetCases($project_id, $suite_id, $section_id)
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_cases/' & $project_id & '&suite_id=' & $suite_id & '&section_id=' & $section_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+EndFunc
+
+
+
+Func _TestRailGetCasesIDTitleTestScenarioIDOwnerObjectivesPreconditionsNotesSteps($project_id, $suite_id, $section_id, $case_id_arr = Null, $user_arr = Null)
+
+	Local $output[0][2]
+
+	_TestRailGetCases($project_id, $suite_id, $section_id)
+
+	$testrail_json = "{""cases"":" & $testrail_json & "}"
+	Local $decoded_json = Json_Decode($testrail_json)
+
+	for $i = 0 to 99999
+
+		Local $id = Json_Get($decoded_json, '.cases[' & $i & '].id')
+		ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $id = ' & $id & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+
+		if StringLen($id) < 1 Then ExitLoop
+
+		if _ArraySearch($case_id_arr, $id) > -1 Then
+
+			Local $title = Json_Get($decoded_json, '.cases[' & $i & '].title')
+			Local $test_scenario_id = Json_Get($decoded_json, '.cases[' & $i & '].custom_test_scenario_id')
+			Local $owner_id = Json_Get($decoded_json, '.cases[' & $i & '].custom_owner')
+
+			Local $owner_name = ""
+			Local $owner_name_index = _ArraySearch($user_arr, $owner_id, 0, 0, 0, 0, 1, 0)
+
+			if $owner_name_index > -1 Then
+
+				$owner_name = $user_arr[$owner_name_index][1]
+			EndIf
+
+			Local $objectives = Json_Get($decoded_json, '.cases[' & $i & '].custom_objectives')
+			Local $preconditions = Json_Get($decoded_json, '.cases[' & $i & '].custom_preconds')
+			Local $notes = Json_Get($decoded_json, '.cases[' & $i & '].custom_notes')
+
+			_ArrayAdd($output, "Test Case Start" & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $id & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $title & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $test_scenario_id & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $owner_name & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $objectives & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $preconditions & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $notes & Chr(28), 0, Chr(28), Chr(30), 1)
+
+			for $j = 0 to 99999
+
+				Local $step = Json_Get($decoded_json, '.cases[' & $i & '].custom_steps_separated[' & $j & '].content')
+
+				if StringLen($step) < 1 Then ExitLoop
+
+				Local $expected_result = Json_Get($decoded_json, '.cases[' & $i & '].custom_steps_separated[' & $j & '].expected')
+				_ArrayAdd($output, $step & Chr(28) & $expected_result, 0, Chr(28), Chr(30), 1)
+			Next
+		EndIf
+	Next
+
+;	_ArrayDisplay($output)
+	Return $output
 
 EndFunc
+
+
+
 
 Func _TestRailGetCasesIdTitle($project_id, $suite_id, $section_id)
 
@@ -762,6 +825,7 @@ EndFunc
 
 
 
+
 Func _TestRailGetUser($user_id)
 
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_user/' & $user_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
@@ -784,6 +848,39 @@ Func _TestRailGetUserName($user_id)
 
 EndFunc
 
+
+Func _TestRailGetUsers()
+
+	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_users', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    $testrail_json = StdoutRead($iPID)
+EndFunc
+
+
+Func _TestRailGetUsersIDName()
+
+	Local $output[0][2]
+
+	_TestRailGetUsers()
+
+	$testrail_json = "{""users"":" & $testrail_json & "}"
+	Local $decoded_json = Json_Decode($testrail_json)
+
+	for $i = 0 to 99999
+
+		Local $id = Json_Get($decoded_json, '.users[' & $i & '].id')
+
+		if StringLen($id) < 1 Then ExitLoop
+
+		Local $name = Json_Get($decoded_json, '.users[' & $i & '].name')
+
+		_ArrayAdd($output, $id & Chr(28) & $name, 0, Chr(28), @CRLF, 1)
+	Next
+
+;	_ArrayDisplay($output)
+	Return $output
+
+EndFunc
 
 
 ; TestRail Markdown
