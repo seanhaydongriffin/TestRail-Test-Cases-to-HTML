@@ -189,7 +189,6 @@ Func _TestRailAuth()
 	Local $iPID = Run('curl.exe -k -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/auth/login -c cookies.txt -d "name=' & $testrail_username & '&password=' & $testrail_password & '&rememberme=1" -X POST', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 EndFunc
 
@@ -199,16 +198,13 @@ EndFunc
 Func _TestRailGetProjects()
 
 ;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_projects", "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 ;	$testrail_json = $response[2]
 
 ;	Local $debug = 'curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_projects'
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $debug = ' & $debug & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_projects', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 
 
@@ -227,11 +223,15 @@ Func _TestRailGetProjectsIDAndNameArray()
 
 		Local $id = Json_Get($decoded_json, '.projects[' & $i & '].id')
 
-		if @error > 0 Then ExitLoop
+		if StringLen($id) < 1 Then ExitLoop
 
 		Local $name = Json_Get($decoded_json, '.projects[' & $i & '].name')
+		Local $is_completed = Json_Get($decoded_json, '.projects[' & $i & '].is_completed')
 
-		_ArrayAdd($output, $id & Chr(28) & $name, 0, Chr(28), @CRLF, 1)
+		if StringCompare($is_completed, "false") = 0 Then
+
+			_ArrayAdd($output, $id & Chr(28) & $name, 0, Chr(28), @CRLF, 1)
+		EndIf
 	Next
 
 ;	_ArrayDisplay($output)
@@ -243,13 +243,11 @@ EndFunc
 Func _TestRailGetSuitesIdName($project_id)
 
 ;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_suites/" & $project_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_suites/' & $project_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	$rr = StringRegExp($testrail_json, '(?U)"id":(.*),.*"name":"(.*)",', 3)
 	Return $rr
@@ -259,16 +257,74 @@ EndFunc
 
 Func _TestRailGetCases($project_id, $suite_id, $section_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_cases/" & $project_id & "&suite_id=" & $suite_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_cases/' & $project_id & '&suite_id=' & $suite_id & '&section_id=' & $section_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+EndFunc
+
+
+
+Func _TestRailGetCasesIDTitleTestScenarioIDOwnerObjectivesPreconditionsNotesSteps($project_id, $suite_id, $section_id, $case_id_arr = Null, $user_arr = Null)
+
+	Local $output[0][2]
+
+	_TestRailGetCases($project_id, $suite_id, $section_id)
+
+	$testrail_json = "{""cases"":" & $testrail_json & "}"
+	Local $decoded_json = Json_Decode($testrail_json)
+
+	for $i = 0 to 99999
+
+		Local $id = Json_Get($decoded_json, '.cases[' & $i & '].id')
+
+		if StringLen($id) < 1 Then ExitLoop
+
+		if _ArraySearch($case_id_arr, $id) > -1 Then
+
+			Local $title = Json_Get($decoded_json, '.cases[' & $i & '].title')
+			Local $test_scenario_id = Json_Get($decoded_json, '.cases[' & $i & '].custom_test_scenario_id')
+			Local $owner_id = Json_Get($decoded_json, '.cases[' & $i & '].custom_owner')
+
+			Local $owner_name = ""
+			Local $owner_name_index = _ArraySearch($user_arr, $owner_id, 0, 0, 0, 0, 1, 0)
+
+			if $owner_name_index > -1 Then
+
+				$owner_name = $user_arr[$owner_name_index][1]
+			EndIf
+
+			Local $objectives = Json_Get($decoded_json, '.cases[' & $i & '].custom_objectives')
+			Local $preconditions = Json_Get($decoded_json, '.cases[' & $i & '].custom_preconds')
+			Local $notes = Json_Get($decoded_json, '.cases[' & $i & '].custom_notes')
+
+			_ArrayAdd($output, "Test Case Start" & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $id & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $title & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $test_scenario_id & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $owner_name & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $objectives & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $preconditions & Chr(28), 0, Chr(28), Chr(30), 1)
+			_ArrayAdd($output, $notes & Chr(28), 0, Chr(28), Chr(30), 1)
+
+			for $j = 0 to 99999
+
+				Local $step = Json_Get($decoded_json, '.cases[' & $i & '].custom_steps_separated[' & $j & '].content')
+
+				if StringLen($step) < 1 Then ExitLoop
+
+				Local $expected_result = Json_Get($decoded_json, '.cases[' & $i & '].custom_steps_separated[' & $j & '].expected')
+				_ArrayAdd($output, $step & Chr(28) & $expected_result, 0, Chr(28), Chr(30), 1)
+			Next
+		EndIf
+	Next
+
+;	_ArrayDisplay($output)
+	Return $output
 
 EndFunc
+
+
+
 
 Func _TestRailGetCasesIdTitle($project_id, $suite_id, $section_id)
 
@@ -282,7 +338,6 @@ Func _TestRailGetCasesIdTitle($project_id, $suite_id, $section_id)
 	for $i = 0 to 99999
 
 		Local $id = Json_Get($decoded_json, '.cases[' & $i & '].id')
-		ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $id = ' & $id & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 		if StringLen($id) < 1 Then ExitLoop
 
@@ -299,22 +354,17 @@ EndFunc
 Func _TestRailGetCasesIdTitleReferences($project_id, $suite_id)
 
 ;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_cases/" & $project_id & "&suite_id=" & $suite_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_cases/' & $project_id & '&suite_id=' & $suite_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	$rr = StringRegExp($testrail_json, '(?U)"id":(.*),.*"title":"(.*)",.*"refs":"(.*)"', 3)
 	Return $rr
 EndFunc
 
 Func _TestRailGetCase($case_id)
-
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_case/" & $case_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_case/' & $case_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
@@ -323,7 +373,7 @@ EndFunc
 
 
 
-Func _TestRailGetCaseIDTitleObjectivesPreconditionsNotesSteps($case_id)
+Func _TestRailGetCaseIDTitleTestScenarioIDOwnerObjectivesPreconditionsNotesSteps($case_id)
 
 	Local $output[0][2]
 
@@ -333,12 +383,17 @@ Func _TestRailGetCaseIDTitleObjectivesPreconditionsNotesSteps($case_id)
 	Local $decoded_json = Json_Decode($testrail_json)
 	Local $id = Json_Get($decoded_json, '.case.id')
 	Local $title = Json_Get($decoded_json, '.case.title')
+	Local $test_scenario_id = Json_Get($decoded_json, '.case.custom_test_scenario_id')
+	Local $owner_id = Json_Get($decoded_json, '.case.custom_owner')
+	Local $owner_name = _TestRailGetUserName($owner_id)
 	Local $objectives = Json_Get($decoded_json, '.case.custom_objectives')
 	Local $preconditions = Json_Get($decoded_json, '.case.custom_preconds')
 	Local $notes = Json_Get($decoded_json, '.case.custom_notes')
 
 	_ArrayAdd($output, $id & Chr(28), 0, Chr(28), Chr(30), 1)
 	_ArrayAdd($output, $title & Chr(28), 0, Chr(28), Chr(30), 1)
+	_ArrayAdd($output, $test_scenario_id & Chr(28), 0, Chr(28), Chr(30), 1)
+	_ArrayAdd($output, $owner_name & Chr(28), 0, Chr(28), Chr(30), 1)
 	_ArrayAdd($output, $objectives & Chr(28), 0, Chr(28), Chr(30), 1)
 	_ArrayAdd($output, $preconditions & Chr(28), 0, Chr(28), Chr(30), 1)
 	_ArrayAdd($output, $notes & Chr(28), 0, Chr(28), Chr(30), 1)
@@ -364,14 +419,9 @@ EndFunc
 
 Func _TestRailGetRunsIdName($project_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_runs/" & $project_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_runs/' & $project_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	$rr = StringRegExp($testrail_json, '(?U)"id":(.*),.*"name":"(.*)"', 3)
 	Return $rr
@@ -381,7 +431,6 @@ EndFunc
 Func _TestRailGetRun($run_id)
 
 	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_run/" & $run_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 EndFunc
 
 Func _TestRailGetRunIDFromPlanIDAndRunName($plan_id, $run_name)
@@ -419,18 +468,13 @@ EndFunc
 Func _TestRailGetResults($test_id)
 
 	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_results/" & $test_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 EndFunc
 
 Func _TestRailGetResultsForCaseIdTestIdStatusIdDefects($run_id, $case_id)
 
-;	Local $cmd = 'curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_case/' & $run_id & '/' & $case_id
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $cmd = ' & $cmd & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_case/' & $run_id & '/' & $case_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	$rr = StringRegExp($testrail_json, '(?U)"defects":"(.*)","id":(.*),"status_id":(.*),"test_id":(.*),', 3)
 	Return $rr
@@ -440,13 +484,9 @@ EndFunc
 
 Func _TestRailGetResultsIdStatusIdDefects($test_id)
 
-;	Local $cmd = 'curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_case/' & $run_id & '/' & $case_id
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $cmd = ' & $cmd & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results/' & $test_id & '&limit=1', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 	filedelete("D:\dwn\fred.txt")
 	filewrite("D:\dwn\fred.txt", $testrail_json)
 ;	Exit
@@ -461,14 +501,10 @@ EndFunc
 
 Func _TestRailGetResultsForRunIdStatusIdCreatedOnDefects($run_id)
 
-;	Local $cmd = 'curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_case/' & $run_id & '/' & $case_id
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $cmd = ' & $cmd & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
 ;	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_run/' & $run_id & '&limit=1', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_results_for_run/' & $run_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 ;	filedelete("D:\dwn\fred.txt")
 ;	filewrite("D:\dwn\fred.txt", $testrail_json)
 ;	Exit
@@ -483,14 +519,9 @@ EndFunc
 
 Func _TestRailGetTestsIdTitleCaseIdRunId($run_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_tests/" & $run_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	$testrail_json = $response[2]
-
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_tests/' & $run_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 ;	filewrite("D:\dwn\fred.txt", $testrail_json)
 ;	Exit
 
@@ -539,10 +570,8 @@ Func _TestRailGetTestsReferenceAndIDFromRunID($run_id)
 
 		$id = StringLeft($id, StringInStr($id, ",") - 1)
 		$id = StringMid($id, StringInStr($id, ":") + 1)
-;		ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $id = ' & $id & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 		$refs = StringMid($refs, StringInStr($refs, ":", 0, -1) + 1)
 		$refs = StringReplace($refs, """", "")
-;		ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $refs = ' & $refs & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 		$test_refs_and_id_dict.Add($refs, $id)
 	Next
 
@@ -552,25 +581,17 @@ EndFunc
 
 Func _TestRailGetPlan($plan_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_plan/" & $plan_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	$testrail_json = $response[2]
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_plan/' & $plan_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 EndFunc
 
 Func _TestRailGetPlans($project_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_plans/" & $project_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	$testrail_json = $response[2]
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_plans/' & $project_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 
 EndFunc
@@ -595,7 +616,6 @@ Func _TestRailGetPlansIDAndNameArray($project_id)
 			$name = StringMid($name, StringInStr($name, ":", 0, -1) + 1)
 			$name = StringReplace($name, """", "")
 			Local $id_name = $id & "|" & $name
-			ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $id_name = ' & $id_name & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 			_ArrayAdd($output, $id_name)
 		Next
 	EndIf
@@ -617,7 +637,6 @@ EndFunc
 Func _TestRailAddResult($test_id, $status_id)
 
 	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/add_result/" & $test_id, "", 0, 0, "", "Content-Type: application/json", '{"status_id":' & $status_id & '}', 0, 1, 0, $testrail_username & ":" & $testrail_password)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 EndFunc
 
 Func _TestRailAddResults($run_id, $results_arr)
@@ -637,18 +656,15 @@ Func _TestRailAddResults($run_id, $results_arr)
 	Next
 
 	$results_json = $results_json & ']}'
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $results_json = ' & $results_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	FileDelete(@ScriptDir & "\curl_in.json")
 	FileWrite(@ScriptDir & "\curl_in.json", $results_json)
 	Local $iPID = Run('curl.exe -s -k -H "Content-Type: application/json" --data @curl_in.json -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/add_results/' & $run_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
 	; unfortunately the below is unreliable.  Working intermittently
 ;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/add_results/" & $run_id, "", 0, 0, "", "Content-Type: application/json", $results_json, 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $response[2] = ' & $response[2] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 EndFunc
 
 
@@ -662,14 +678,9 @@ EndFunc
 
 Func _TestRailGetStatusesIdLabel()
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_statuses", "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	$testrail_json = $response[2]
-
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_statuses/', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 ;	filedelete("D:\dwn\fred.txt")
 ;	filewrite("D:\dwn\fred.txt", $testrail_json)
 ;	Exit
@@ -710,17 +721,9 @@ EndFunc
 
 Func _TestRailGetSections($project_id)
 
-;	$response = cURL_easy($testrail_domain & "/index.php?/api/v2/get_sections/" & $project_id, "", 0, 0, "", "Content-Type: application/json", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
-;	$testrail_json = $response[2]
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
-
 	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_sections/' & $project_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_json = ' & $testrail_json & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
-
-
 EndFunc
 
 
@@ -794,22 +797,136 @@ Func _TestRailGetSectionIDAndName($project_id)
 EndFunc
 
 
+
+
+Func _TestRailGetUser($user_id)
+
+	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_user/' & $user_id, @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    $testrail_json = StdoutRead($iPID)
+EndFunc
+
+
+Func _TestRailGetUserName($user_id)
+
+	Local $output[0][2]
+
+	_TestRailGetUser($user_id)
+
+	$testrail_json = "{""user"":" & $testrail_json & "}"
+	Local $decoded_json = Json_Decode($testrail_json)
+	Local $name = Json_Get($decoded_json, '.user.name')
+
+	Return $name
+
+EndFunc
+
+
+Func _TestRailGetUsers()
+
+	Local $iPID = Run('curl.exe -k -H "Content-Type: application/json" -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/api/v2/get_users', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    $testrail_json = StdoutRead($iPID)
+EndFunc
+
+
+Func _TestRailGetUsersIDName()
+
+	Local $output[0][2]
+
+	_TestRailGetUsers()
+
+	$testrail_json = "{""users"":" & $testrail_json & "}"
+	Local $decoded_json = Json_Decode($testrail_json)
+
+	for $i = 0 to 99999
+
+		Local $id = Json_Get($decoded_json, '.users[' & $i & '].id')
+
+		if StringLen($id) < 1 Then ExitLoop
+
+		Local $name = Json_Get($decoded_json, '.users[' & $i & '].name')
+
+		_ArrayAdd($output, $id & Chr(28) & $name, 0, Chr(28), @CRLF, 1)
+	Next
+
+;	_ArrayDisplay($output)
+	Return $output
+
+EndFunc
+
+
 ; TestRail Markdown
 
 
 
 Func _TestRailMarkdownToHTML($markdown)
 
-	Local $html = $markdown
+	; reformat testrail tables slightly
+	$markdown_line = StringSplit($markdown, @CRLF, 3)
 
-	$html = StringReplace($html, @CRLF, "<br>")
-	$html = StringReplace($html, @LF, "<br>")
-	$html = StringRegExpReplace($html, '(\*\*|__)(.*?)\1', '<strong>\2</strong>')	; bold
-	$html = StringRegExpReplace($html, '(\*|_)(.*?)\1', '<em>\2</em>')				; emphasis
-	$html = StringRegExpReplace($html, '\~\~(.*?)\~\~', '<del>\2</del>')			; del
-	$html = StringRegExpReplace($html, '\:\"(.*?)\"\:', '<q>\2</q>')				; quote
+	for $i = 0 to (UBound($markdown_line) - 1)
 
-	Return $html
+		if StringRegExp($markdown_line[$i], "^\|\|\|") = 1 Then
+
+			$markdown_line[$i] = "| " & StringReplace(StringMid($markdown_line[$i], 4), ":", " ")
+			_ArrayInsert($markdown_line, $i + 1, StringRegExpReplace($markdown_line[$i], "[^|]", "-"), 0, chr(28), chr(28))
+			$i = $i + 1
+		EndIf
+
+		$markdown_line[$i] = StringRegExpReplace($markdown_line[$i], "^\|\|", "|")
+	Next
+
+	$markdown = _ArrayToString($markdown_line, @CRLF)
+
+	FileDelete(@ScriptDir & "\tmp.md")
+	FileWrite(@ScriptDir & "\tmp.md", $markdown)
+
+	Local $iPID = Run('multimarkdown.exe tmp.md', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    Local $tmp_html = StdoutRead($iPID)
+
+	; remove the additional paragraph tags multimarkdown adds at the start and end
+	$tmp_html = StringRegExpReplace($tmp_html, "(?s)<p>(.*?)</p>", "\1")
+
+	; add missing <br> newlines
+	$tmp_html_line = StringSplit($tmp_html, @CRLF, 3)
+
+	for $i = 0 to (UBound($tmp_html_line) - 1)
+
+		if StringRegExp($tmp_html_line[$i], "[^>]$") = 1 or StringRegExp($tmp_html_line[$i], "</strong>$") = 1 Then
+
+			$tmp_html_line[$i] = $tmp_html_line[$i] & "<br>"
+		EndIf
+	Next
+
+	$tmp_html = _ArrayToString($tmp_html_line, @CRLF)
+
+	; reformat <ol> tags to not indent or have margins
+
+	$tmp_html = StringReplace($tmp_html, "<ol>", "<ol style=""list-style-position: inside; padding-left: 0; margin-top: 0em; margin-bottom: 0em;"">")
+
+
+
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<h1", "<h1")
+;	$tmp_html = StringReplace($tmp_html, "</h1>" & @CRLF, "</h1>")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<h2", "<h2")
+;	$tmp_html = StringReplace($tmp_html, "</h2>" & @CRLF, "</h2>")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<h3", "<h3")
+;	$tmp_html = StringReplace($tmp_html, "</h3>" & @CRLF, "</h3>")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<hr />" & @CRLF, "<hr />")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<li>", "<li>")
+;	$tmp_html = StringReplace($tmp_html, "</li>" & @CRLF, "</li>")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<blockquote>", "<blockquote>")
+;	$tmp_html = StringReplace($tmp_html, "</blockquote>" & @CRLF, "</blockquote>")
+;	$tmp_html = StringReplace($tmp_html, @CRLF & "<figure>", "<figure>")
+;	$tmp_html = StringReplace($tmp_html, "</figure>" & @CRLF, "</figure>")
+
+
+;	$tmp_html = StringReplace($tmp_html, @CRLF, "<br>")
+;	$tmp_html = StringReplace($tmp_html, @LF, "<br>")
+
+	Return $tmp_html
 EndFunc
 
 
@@ -822,7 +939,6 @@ Func _TestRailGetTestCases($key)
 
 	$response = cURL_easy($testrail_domain & "/index.php?/ext/jira/render_panel&ae=connect&av=1&issue=" & $key & "&panel=references&login=button&frame=tr-frame-panel-references", "cookies.txt", 1, 0, "", "Content-Type: text/html; charset=UTF-8", "", 0, 1, 0, $testrail_username & ":" & $testrail_password)
 	$testrail_html = $response[2]
-;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $testrail_html = ' & $testrail_html & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 EndFunc
 
 

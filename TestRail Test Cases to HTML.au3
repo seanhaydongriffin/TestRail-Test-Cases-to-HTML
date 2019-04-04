@@ -20,13 +20,16 @@
 #include <Crypt.au3>
 #include <GuiComboBox.au3>
 #include <String.au3>
-
+#include <Excel.au3>
+#include <MsgBoxConstants.au3>
 
 
 Global $html, $markup, $storage_format
 Global $app_name = "TestRail Test Cases to HTML"
 Global $ini_filename = @ScriptDir & "\" & $app_name & ".ini"
+Global $log_filename = @ScriptDir & "\" & $app_name & ".log"
 Global $aResult, $iRows, $iColumns, $iRval, $run_name = "", $max_num_defects = 0, $max_num_days = 0, $version_name = ""
+Global $user_arr
 
 Global $main_gui = GUICreate($app_name, 860, 600)
 
@@ -36,8 +39,6 @@ Global $testrail_username_input = GUICtrlCreateInput(IniRead($ini_filename, "mai
 GUICtrlCreateLabel("Password", 20, 50, 60, 20)
 Global $testrail_password_input = GUICtrlCreateInput("", 100, 50, 250, 20, $ES_PASSWORD)
 Global $testrail_authenticate_button = GUICtrlCreateButton("Authenticate", 100, 70, 80, 20)
-;GUICtrlCreateLabel("TestRail Project", 20, 70, 100, 20)
-;Global $testrail_project_combo = GUICtrlCreateCombo("", 140, 70, 250, 20, BitOR($CBS_DROPDOWNLIST, $WS_VSCROLL))
 GUICtrlCreateGroup("", -99, -99, 1, 1)
 
 GUICtrlCreateGroup("TestRail Projects", 390, 10, 450, 180)
@@ -86,6 +87,8 @@ GUISetState(@SW_SHOW, $main_gui)
 GUICtrlSetData($status_input, "")
 GUIRegisterMsg($WM_NOTIFY, "WM_NOTIFY")
 
+FileDelete($log_filename)
+
 ; Loop until the user exits.
 While 1
 
@@ -118,77 +121,23 @@ While 1
 				_GUICtrlListView_DeleteAllItems($testrail_section_listview)
 				_GUICtrlListView_DeleteAllItems($testrail_case_listview)
 
+				GUICtrlSetData($status_input, "Getting the TestRail Users ... ")
+				_FileWriteLog($log_filename, "Getting the TestRail Users ... ")
+				$user_arr = _TestRailGetUsersIDName()
+
 				GUICtrlSetData($status_input, "Getting the TestRail Projects ... ")
+				_FileWriteLog($log_filename, "Getting the TestRail Projects ... ")
 				Local $project_arr = _TestRailGetProjectsIDAndNameArray()
 				_GUICtrlListView_AddArray($testrail_project_listview, $project_arr)
+
 				GUICtrlSetData($status_input, "")
 			EndIf
 
 			enable_gui()
 
-
 		Case $export_button
 
 			Create_Case_HTML()
-
-
-;			GUICtrlSetData($progress, 0)
-;			GUICtrlSetState($epic_key_input, $GUI_DISABLE)
-;			GUICtrlSetState($export_button, $GUI_DISABLE)
-;			GUISetCursor(15, 1, $main_gui)
-;			_GUICtrlListView_DeleteAllItems($listview)
-
-;			$each = "blank"
-;			Local $pid = ShellExecute(@ScriptDir & "\data_extractor.exe", """" & GUICtrlRead($testrail_username_input) & """ """ & GUICtrlRead($testrail_password_input) & """ """ & $run_ids & """ """ & GUICtrlRead($jira_username_input) & """ """ & GUICtrlRead($jira_password_input) & """ """ & GUICtrlRead($epic_key_input) & """", "", "", @SW_HIDE)
-
-#cs
-			; populate listview with epic keys
-
-			Local $epic_key = StringSplit(GUICtrlRead($epic_key_input), ",;|", 2)
-
-			for $each in $epic_key
-
-				Local $pid = ShellExecute(@ScriptDir & "\data_extractor.exe", """" & GUICtrlRead($testrail_username_input) & """ """ & GUICtrlRead($testrail_password_input) & """ """ & $run_ids & """ """ & GUICtrlRead($jira_username_input) & """ """ & GUICtrlRead($jira_password_input) & """ """ & $each & """", "", "", @SW_HIDE)
-				GUICtrlCreateListViewItem($each & "|" & $pid & "|In Progress", $listview)
-			Next
-
-			While True
-
-				Local $all_epics_done = True
-
-				for $index = 0 to (_GUICtrlListView_GetItemCount($listview) - 1)
-
-					Local $pid = _GUICtrlListView_GetItemText($listview, $index, 1)
-					Local $status = _GUICtrlListView_GetItemText($listview, $index, 2)
-
-					if StringCompare($status, "In Progress") = 0 Then
-
-						$all_epics_done = False
-
-						if ProcessExists($pid) = False Then
-
-							_GUICtrlListView_SetItemText($listview, $index, "Done", 2)
-
-						EndIf
-					EndIf
-				Next
-
-				if $all_epics_done = True Then
-
-					ExitLoop
-				EndIf
-
-				Sleep(1000)
-			WEnd
-#ce
-
-
-;			GUICtrlSetData($progress, 0)
-;			GUICtrlSetData($status_input, "")
-;			GUICtrlSetState($epic_key_input, $GUI_ENABLE)
-;			GUICtrlSetState($export_button, $GUI_ENABLE)
-;			GUISetCursor(2, 0, $main_gui)
-
 
 	EndSwitch
 
@@ -205,9 +154,6 @@ _TestRailShutdown()
 Func WM_NOTIFY($hWnd, $iMsg, $wParam, $lParam)
     #forceref $hWnd, $iMsg, $wParam
     Local $hWndFrom, $iIDFrom, $iCode, $tNMHDR, $hWndListView, $tInfo
-    ; Local $tBuffer
-;    $hWndListView = $g_hListView
- ;   If Not IsHWnd($g_hListView) Then $hWndListView = GUICtrlGetHandle($testrail_project_listview)
 
     $tNMHDR = DllStructCreate($tagNMHDR, $lParam)
     $hWndFrom = HWnd(DllStructGetData($tNMHDR, "hWndFrom"))
@@ -265,37 +211,76 @@ Func Create_Case_HTML($confluence_html = False)
 
 	Local $double_quotes = """"
 
-	$selected_case = _GUICtrlListView_GetSelectedIndices($testrail_case_listview, true)
-	_ArrayDelete($selected_case, 0)
+	Local $selected_case_index = _GUICtrlListView_GetSelectedIndices($testrail_case_listview, True)
 
-	if UBound($selected_case) = 0 Then
+	Local $case_id_arr[$selected_case_index[0]]
 
-		SplashTextOn($app_name, "You must select at least one case first.", 400, 50)
-		Sleep(3000)
-		SplashOff()
-	Else
+	for $i = 1 to $selected_case_index[0]
 
-		Local $num_selected_cases = UBound($selected_case)
-		Local $selected_case_num = 0
+		$case_id_arr[$i - 1] = _GUICtrlListView_GetItemText($testrail_case_listview, $selected_case_index[$i], 0)
+	Next
 
-		disable_gui()
+	Local $selected_project_id = _GUICtrlListView_GetItemText($testrail_project_listview, Number(_GUICtrlListView_GetSelectedIndices($testrail_project_listview)), 0)
+	Local $selected_section_id = _GUICtrlListView_GetItemText($testrail_section_listview, Number(_GUICtrlListView_GetSelectedIndices($testrail_section_listview)), 0)
 
-		for $each_case_index In $selected_case
+	GUICtrlSetData($status_input, "Getting the TestRail Cases ... ")
+	_FileWriteLog($log_filename, "Getting the TestRail Cases ... ")
+	Local $cases_arr = _TestRailGetCasesIDTitleTestScenarioIDOwnerObjectivesPreconditionsNotesSteps($selected_project_id, "", $selected_section_id, $case_id_arr, $user_arr)
 
-			$selected_case_num = $selected_case_num + 1
-			GUICtrlSetData($progress, ($selected_case_num / $num_selected_cases) * 100)
+;	_ArrayDisplay($cases_arr)
 
-			Local $id = _GUICtrlListView_GetItemText($testrail_case_listview, $each_case_index, 0)
-			Local $report_filename = @ScriptDir & "\TestRail " & $id & ".html"
-			GUICtrlSetData($status_input, "Exporting TestRail " & $id & ".html ... ")
+	Local $num_cases = 0
 
-			Local $case_arr = _TestRailGetCaseIDTitleObjectivesPreconditionsNotesSteps($id)
-;			_ArrayDisplay($case_arr)
+	for $i = 0 to (UBound($cases_arr) - 1)
+		ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $i = ' & $i & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 
-			$case_arr[1][0] = _TestRailMarkdownToHTML($case_arr[1][0])
-			$case_arr[2][0] = _TestRailMarkdownToHTML($case_arr[2][0])
-			$case_arr[3][0] = _TestRailMarkdownToHTML($case_arr[3][0])
-			$case_arr[4][0] = _TestRailMarkdownToHTML($case_arr[4][0])
+		if StringCompare($cases_arr[$i][0], "Test Case Start") = 0 Then
+
+			$num_cases = $num_cases + 1
+		EndIf
+	Next
+
+	disable_gui()
+
+	for $i = 1 to (UBound($cases_arr) - 1)
+
+		Local $id = $cases_arr[$i][0]
+		_FileWriteLog($log_filename, "case id = " & $id)
+		$i = $i + 1
+		Local $title = $cases_arr[$i][0]
+		_FileWriteLog($log_filename, "case title = " & $title)
+		$i = $i + 1
+		Local $test_scenario_id = $cases_arr[$i][0]
+		_FileWriteLog($log_filename, "case test scenario id = " & $test_scenario_id)
+		$i = $i + 1
+
+		if StringLen($test_scenario_id) = 0 Then
+
+			_FileWriteLog($log_filename, "skipping this test case as the test scenario is blank")
+
+			While StringCompare($cases_arr[$i][0], "Test Case Start") <> 0 and $i < (UBound($cases_arr) - 1)
+
+				$i = $i + 1
+			WEnd
+		Else
+
+			Local $owner_name = $cases_arr[$i][0]
+			_FileWriteLog($log_filename, "case owner name = " & $owner_name)
+			$i = $i + 1
+			Local $objectives = _TestRailMarkdownToHTML($cases_arr[$i][0])
+			_FileWriteLog($log_filename, "case objectives = " & $objectives)
+			$i = $i + 1
+			Local $preconditions = _TestRailMarkdownToHTML($cases_arr[$i][0])
+			_FileWriteLog($log_filename, "case preconditions = " & $preconditions)
+			$i = $i + 1
+			Local $notes = _TestRailMarkdownToHTML($cases_arr[$i][0])
+			_FileWriteLog($log_filename, "case notes = " & $notes)
+			$i = $i + 1
+
+			Local $report_filename = $id & ".html"
+			GUICtrlSetData($status_input, "Exporting " & $report_filename & " ... ")
+			_FileWriteLog($log_filename, "Exporting " & $report_filename & " ... ")
+			$report_filename = $test_scenario_id & ".html"
 
 			$html = 			""
 
@@ -330,56 +315,54 @@ Func Create_Case_HTML($confluence_html = False)
 								"</head>" & @CRLF & _
 								"<body>" & @CRLF & _
 								"<table>" & @CRLF & _
-								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "trb" & $double_quotes & ">Document Name:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Product Owner:</td><td class=" & $double_quotes & "tr" & $double_quotes & "></td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Release Date:</td><td colspan=" & $double_quotes & "3" & $double_quotes & "></td></tr>" & @CRLF & _
+								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "trb" & $double_quotes & ">Document Name:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $test_scenario_id & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Product Owner:</td><td class=" & $double_quotes & "tr" & $double_quotes & ">" & $owner_name & "</td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Release Date:</td><td colspan=" & $double_quotes & "3" & $double_quotes & "></td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Developer:</td><td class=" & $double_quotes & "tr" & $double_quotes & "></td><td class=" & $double_quotes & "tsb" & $double_quotes & ">Unit(s):</td><td class=" & $double_quotes & "ts" & $double_quotes & "></td><td class=" & $double_quotes & "trb" & $double_quotes & ">Version / Build:</td><td></td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Test Objective:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[2][0] & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Test Objective:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $objectives & "</td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prepared By / Date:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
 								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Tested By / Test Date:</td><td colspan=" & $double_quotes & "5" & $double_quotes & "></td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Description:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[1][0] & "</td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prerequisite:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[3][0] & "</td></tr>" & @CRLF & _
-								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Role:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $case_arr[4][0] & "</td></tr></table>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Description:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $title & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Prerequisite:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $preconditions & "</td></tr>" & @CRLF & _
+								"<tr><td class=" & $double_quotes & "trb" & $double_quotes & ">Role:</td><td colspan=" & $double_quotes & "5" & $double_quotes & ">" & $notes & "</td></tr></table>" & @CRLF & _
 								"<br>" & @CRLF & _
 								"<table class=" & $double_quotes & "b" & $double_quotes & ">" & @CRLF & _
 								"<tr class=" & $double_quotes & "ng" & $double_quotes & "><td class=" & $double_quotes & "tcbc" & $double_quotes & ">Step #</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Steps</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Expected Result</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Actual Result</td><td class=" & $double_quotes & "ttbc" & $double_quotes & ">Remarks</td></tr>" & @CRLF
 
-
-
-
 			Local $step_num = 0
 
-			for $i = 5 to (UBound($case_arr) - 1)
+			While $i < UBound($cases_arr) and StringCompare($cases_arr[$i][0], "Test Case Start") <> 0
 
 				$step_num = $step_num + 1
-				$case_arr[$i][0] = _TestRailMarkdownToHTML($case_arr[$i][0])
-				$case_arr[$i][1] = _TestRailMarkdownToHTML($case_arr[$i][1])
-				$html = $html &		"<tr><td class=" & $double_quotes & "tcbc" & $double_quotes & ">" & $step_num & "</td><td>" & $case_arr[$i][0] & "</td><td>" & $case_arr[$i][1] & "</td><td></td><td></td></tr>" & @CRLF
-			Next
+				$cases_arr[$i][0] = _TestRailMarkdownToHTML($cases_arr[$i][0])
+				_FileWriteLog($log_filename, "step " & $step_num & " steps = " & $cases_arr[$i][0])
+				$cases_arr[$i][1] = _TestRailMarkdownToHTML($cases_arr[$i][1])
+				_FileWriteLog($log_filename, "step " & $step_num & " expected result = " & $cases_arr[$i][1])
+				$html = $html &		"<tr><td class=" & $double_quotes & "tcbc" & $double_quotes & ">" & $step_num & "</td><td>" & $cases_arr[$i][0] & "</td><td>" & $cases_arr[$i][1] & "</td><td></td><td></td></tr>" & @CRLF
+				$i = $i + 1
+			WEnd
 
 			$html = $html &			"</table></body></html>" & @CRLF
-			FileDelete($report_filename)
-			FileWrite($report_filename, $html)
-			GUICtrlSetData($status_input, "")
 
-		Next
+			_FileWriteLog($log_filename, "creating file " & @ScriptDir & "\" & $report_filename)
+			FileDelete(@ScriptDir & "\" & $report_filename)
+			FileWrite(@ScriptDir & "\" & $report_filename, $html)
 
-		GUICtrlSetData($progress, 0)
-		enable_gui()
-	EndIf
+			_FileWriteLog($log_filename, "creating excel file for " & @ScriptDir & "\" & $report_filename)
+			html_file_to_excel_file(@ScriptDir & "\" & $report_filename, "", "20,50,50,30,30")
 
-
-EndFunc
+		EndIf
 
 
-Func Update_Confluence_Page($url, $jira_username, $jira_password, $space_key, $ancestor_key, $page_key, $page_title, $page_body)
+		GUICtrlSetData($status_input, "")
 
-	_ConfluenceSetup()
-	_ConfluenceDomainSet($url)
-	_ConfluenceLogin($jira_username, $jira_password)
-	_ConfluenceUpdatePage($space_key, $ancestor_key, $page_key, $page_title, $page_body)
-	_ConfluenceShutdown()
+	Next
+
+	GUICtrlSetData($progress, 0)
+	enable_gui()
+
 
 EndFunc
+
 
 Func disable_gui()
 
@@ -403,4 +386,51 @@ Func enable_gui()
 	GUICtrlSetState($testrail_section_listview, $GUI_ENABLE)
 	GUICtrlSetState($testrail_case_listview, $GUI_ENABLE)
 	GUICtrlSetState($export_button, $GUI_ENABLE)
+EndFunc
+
+
+Func html_file_to_excel_file($html_file_path, $excel_file_path = "", $comma_separated_column_widths = "")
+
+	if StringLen($excel_file_path) = 0 Then
+
+		$excel_file_path = StringReplace($html_file_path, ".html", ".xlsx")
+	EndIf
+
+	FileDelete($excel_file_path)
+
+	; Create application object
+	Local $oExcel = _Excel_Open(False, False, False, False, False)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_BookOpen Example", "Error creating the Excel application object." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+	; Open an existing workbook and return its object identifier.
+	Local $oWorkbook = _Excel_BookOpen($oExcel, $html_file_path) ;, False, False)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_BookOpen Example 1", "Error opening '" & $html_file_path & "'." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+	;MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_BookOpen Example 1", "Workbook '" & $sWorkbook & "' has been opened successfully." & @CRLF & @CRLF & "Creation Date: " & $oWorkbook.BuiltinDocumentProperties("Creation Date").Value)
+
+	Local $sResult = _Excel_RangeRead($oWorkbook, Default, "A1")
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_RangeRead Example 1", "Error reading from workbook." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+	;MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_RangeRead Example 1", "Data successfully read." & @CRLF & "Value of cell A1: " & $sResult)
+	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $sResult = ' & $sResult & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+
+	if StringLen($comma_separated_column_widths) > 0 Then
+
+		Local $column_width = StringSplit($comma_separated_column_widths, ",", 3)
+
+		for $i = 0 to (UBound($column_width) - 1)
+
+			Local $range_str = _Excel_ColumnToLetter($i + 1) & ":" & _Excel_ColumnToLetter($i + 1)
+			$oWorkbook.Sheets(1).Range($range_str).ColumnWidth = $column_width[$i]
+		Next
+	EndIf
+
+	$oWorkbook.Sheets(1).Range("1:100").Rows.AutoFit
+
+
+	_Excel_BookSaveAs($oWorkbook, $excel_file_path, $xlWorkbookDefault, True)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_BookSaveAs Example 1", "Error saving workbook to '" & $excel_file_path & "'." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+	;MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_BookSaveAs Example 1", "Workbook successfully saved as '" & $excel_workbook & "'.")
+
+	_Excel_Close($oExcel)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_Close Example 1", "Error closing the Excel application." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
 EndFunc
