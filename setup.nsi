@@ -47,6 +47,7 @@ Section "" ;No components page, name is not important
   File "TestRail Test Cases to HTML.exe"
   File "curl.exe"
   File "multimarkdown.exe"
+  File "7z.exe"
   File *.dll
 
   CreateDirectory "$SMPROGRAMS\TestRail Test Cases to HTML"

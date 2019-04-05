@@ -186,7 +186,24 @@ Func _TestRailAuth()
 ;	$response = cURL_easy($testrail_domain, "cookies.txt", 2, 0, "", "Content-Type: text/html", "name=sgriffin@janison.com&password=Gri01ffo&rememberme=1", 0, 1, 0, $testrail_username & ":" & $testrail_password)
 ;	Exit
 
+	Local $iPID = Run('curl.exe -k -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/auth/login -c cookies.txt', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    $testrail_json = StdoutRead($iPID)
+
 	Local $iPID = Run('curl.exe -k -u ' & $testrail_username & ':' & $testrail_password & ' ' & $testrail_domain & '/index.php?/auth/login -c cookies.txt -d "name=' & $testrail_username & '&password=' & $testrail_password & '&rememberme=1" -X POST', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPID)
+    $testrail_json = StdoutRead($iPID)
+
+EndFunc
+
+
+
+Func _TestRailGetAttachment($attachment_id)
+
+;	$response = cURL_easy($testrail_domain, "cookies.txt", 2, 0, "", "Content-Type: text/html", "name=sgriffin@janison.com&password=Gri01ffo&rememberme=1", 0, 1, 0, $testrail_username & ":" & $testrail_password)
+;	Exit
+
+	Local $iPID = Run('curl.exe -k https://janison.testrail.com/index.php?/attachments/get/' & $attachment_id & ' -b cookies.txt -D ' & $attachment_id & '.header -o ' & $attachment_id & '.image', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
     $testrail_json = StdoutRead($iPID)
 
@@ -879,12 +896,16 @@ Func _TestRailMarkdownToHTML($markdown)
 
 	$markdown = _ArrayToString($markdown_line, @CRLF)
 
+	; adding a newline at the front of the markdown text, to enforce no metadata is read from line #1
+	$markdown = @CRLF & $markdown
+
+	FileDelete(@ScriptDir & "\tmp.html")
 	FileDelete(@ScriptDir & "\tmp.md")
 	FileWrite(@ScriptDir & "\tmp.md", $markdown)
-
-	Local $iPID = Run('multimarkdown.exe tmp.md', @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
-    ProcessWaitClose($iPID)
-    Local $tmp_html = StdoutRead($iPID)
+	ShellExecuteWait("multimarkdown.exe", "tmp.md -o tmp.html", @ScriptDir, "", @SW_HIDE)
+	FileDelete(@ScriptDir & "\tmp.md")
+	Local $tmp_html = FileRead(@ScriptDir & "\tmp.html")
+	FileDelete(@ScriptDir & "\tmp.html")
 
 	; remove the additional paragraph tags multimarkdown adds at the start and end
 	$tmp_html = StringRegExpReplace($tmp_html, "(?s)<p>(.*?)</p>", "\1")
@@ -906,6 +927,45 @@ Func _TestRailMarkdownToHTML($markdown)
 
 	$tmp_html = StringReplace($tmp_html, "<ol>", "<ol style=""list-style-position: inside; padding-left: 0; margin-top: 0em; margin-bottom: 0em;"">")
 
+	; get all attachments
+
+;	Local $attachment_id = StringRegExp($tmp_html, "<img src=""https://janison.testrail.com/index.php\?/attachments/get/(\d+)"" alt="""" />", 1)
+	Local $attachment_id = StringRegExp($tmp_html, "<img src=""index.php\?/attachments/get/(\d+)"" alt="""" />", 1)
+
+	if @error = 0 Then
+
+		for $i = 0 to (UBound($attachment_id) - 1)
+
+			_TestRailGetAttachment($attachment_id[$i])
+			$attachment_header = FileRead($attachment_id[$i] & ".header")
+			FileDelete(@ScriptDir & "\" & $attachment_id[$i] & ".header")
+			Local $content_type = StringRegExp($attachment_header, "(?s)Content-Type: (.*?)\n", 1)
+			Local $image_file_extension = ""
+
+			Switch StringStripWS($content_type[0], 8)
+
+				Case "image/gif"
+
+					$image_file_extension = ".gif"
+
+				Case "image/jpeg"
+
+					$image_file_extension = ".jpg"
+
+				Case "image/png"
+
+					$image_file_extension = ".png"
+
+			EndSwitch
+
+			if StringLen($image_file_extension) > 0 Then
+
+				FileDelete(@ScriptDir & "\" & $attachment_id[$i] & $image_file_extension)
+				FileMove(@ScriptDir & "\" & $attachment_id[$i] & ".image", @ScriptDir & "\" & $attachment_id[$i] & $image_file_extension, 1)
+				$tmp_html = StringReplace($tmp_html, "<img src=""index.php?/attachments/get/" & $attachment_id[$i] & """ alt="""" />", "<img src=""" & $attachment_id[$i] & $image_file_extension & """ alt="""" />")
+			EndIf
+		Next
+	EndIf
 
 
 ;	$tmp_html = StringReplace($tmp_html, @CRLF & "<h1", "<h1")

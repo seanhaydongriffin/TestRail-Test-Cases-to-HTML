@@ -21,7 +21,9 @@
 #include <GuiComboBox.au3>
 #include <String.au3>
 #include <Excel.au3>
+#include <Word.au3>
 #include <MsgBoxConstants.au3>
+
 
 
 Global $html, $markup, $storage_format
@@ -114,6 +116,9 @@ While 1
 			GUICtrlSetData($status_input, "Starting the TestRail connection ... ")
 			_TestRailDomainSet("https://janison.testrail.com")
 			_TestRailLogin(GUICtrlRead($testrail_username_input), GUICtrlRead($testrail_password_input))
+
+			; the following is required for _TestRailGetAttachment()
+			_TestRailAuth()
 
 			if StringLen(GUICtrlRead($testrail_password_input)) > 0 Then
 
@@ -267,6 +272,7 @@ Func Create_Case_HTML($confluence_html = False)
 			Local $owner_name = $cases_arr[$i][0]
 			_FileWriteLog($log_filename, "case owner name = " & $owner_name)
 			$i = $i + 1
+			ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $cases_arr[$i][0] = ' & $cases_arr[$i][0] & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 			Local $objectives = _TestRailMarkdownToHTML($cases_arr[$i][0])
 			_FileWriteLog($log_filename, "case objectives = " & $objectives)
 			$i = $i + 1
@@ -274,6 +280,10 @@ Func Create_Case_HTML($confluence_html = False)
 			_FileWriteLog($log_filename, "case preconditions = " & $preconditions)
 			$i = $i + 1
 			Local $notes = _TestRailMarkdownToHTML($cases_arr[$i][0])
+
+			; Special case - removing "Role :" if the text appears at the beginning
+			$notes = StringRegExpReplace($notes, "^Role: ", "")
+
 			_FileWriteLog($log_filename, "case notes = " & $notes)
 			$i = $i + 1
 
@@ -349,6 +359,7 @@ Func Create_Case_HTML($confluence_html = False)
 
 			_FileWriteLog($log_filename, "creating excel file for " & @ScriptDir & "\" & $report_filename)
 			html_file_to_excel_file(@ScriptDir & "\" & $report_filename, "", "20,50,50,30,30")
+			html_file_to_word_file(@ScriptDir & "\" & $report_filename, "")
 
 		EndIf
 
@@ -434,3 +445,99 @@ Func html_file_to_excel_file($html_file_path, $excel_file_path = "", $comma_sepa
 	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Excel UDF: _Excel_Close Example 1", "Error closing the Excel application." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
 
 EndFunc
+
+
+Func html_file_to_word_file($html_file_path, $word_file_path = "")
+
+	if StringLen($word_file_path) = 0 Then
+
+		$word_file_path = StringReplace($html_file_path, ".html", ".docx")
+	EndIf
+
+	FileDelete($word_file_path)
+
+
+	; Create application object
+	Local $oWord = _Word_Create(False)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Word UDF: _Word_DocOpen Example", "Error creating a new Word application object." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+	; Open a document read-only
+	Local $oDoc = _Word_DocOpen($oWord, $html_file_path)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Word UDF: _Word_DocOpen Example 1", "Error opening '.\Extras\Test.doc'." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+
+	; Save document
+	_Word_DocSaveAs($oDoc, $word_file_path, $WdFormatDocumentDefault)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Word UDF: _Word_DocSaveAs Example", "Error saving the Word document." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+;	_Word_DocSaveAsEx($oDoc, $word_file_path, $WdFormatDocumentDefault)
+;	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $word_file_path = ' & $word_file_path & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+
+	; Close a Word coument
+	_Word_DocClose($oDoc)
+	If @error Then Exit MsgBox($MB_SYSTEMMODAL, "Word UDF: _Word_DocClose Example", "Error closing document '.\Extras\Test.doc'." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+	_Word_Quit($oWord)
+	If @error Then MsgBox($MB_SYSTEMMODAL, "Word UDF: _Word_Quit Example", "Error closing the Word application object." & @CRLF & "@error = " & @error & ", @extended = " & @extended)
+
+
+	; make paths relative not absolute
+
+	DirRemove(@ScriptDir & "\word", 1)
+	ShellExecuteWait("7z.exe", "x """ & $word_file_path & """ word\document.xml", @ScriptDir, "", @SW_HIDE)
+	Local $str = FileRead(@ScriptDir & "\word\document.xml")
+	$str = StringReplace($str, @ScriptDir & "\", "")
+	FileDelete(@ScriptDir & "\word\document.xml")
+	FileWrite(@ScriptDir & "\word\document.xml", $str)
+	ShellExecuteWait("7z.exe", "u """ & $word_file_path & """ word\document.xml", @ScriptDir, "", @SW_HIDE)
+	DirRemove(@ScriptDir & "\word", 1)
+
+EndFunc
+
+; #FUNCTION# ====================================================================================================================
+; Author ........: water (based on the Word UDF written by Bob Anthony)
+; Modified ......:
+; ===============================================================================================================================
+Func _Word_DocSaveAsEx($oDoc, $sFileName = Default, $iFileFormat = Default, $bReadOnlyRecommended = Default, $bAddToRecentFiles = Default, $sPassword = Default, $sWritePassword = Default)
+    ; Error handler, automatic cleanup at end of function
+    Local $oError = ObjEvent("AutoIt.Error", "__Word_COMErrFuncEx")
+    #forceref $oError
+
+    If $bReadOnlyRecommended = Default Then $bReadOnlyRecommended = False
+    If $bAddToRecentFiles = Default Then $bAddToRecentFiles = 0
+    If $sPassword = Default Then $sPassword = ""
+    If $sWritePassword = Default Then $sWritePassword = ""
+    If Not IsObj($oDoc) Then Return SetError(1, 0, 0)
+    $oDoc.SaveAs2($sFileName, $iFileFormat, False, $sPassword, $bAddToRecentFiles, $sWritePassword, $bReadOnlyRecommended) ; Try to save for >= Word 2010
+    If @error = 0x80020006 Then $oDoc.SaveAs($sFileName, $iFileFormat, False, $sPassword, $bAddToRecentFiles, $sWritePassword, $bReadOnlyRecommended) ; COM error "Unknown Name" hence save for <= Word 2007
+    If @error Then Return SetError(2, @error, 0)
+    Return 1
+EndFunc   ;==>_Word_DocSaveAsEx
+
+; #INTERNAL_USE_ONLY#============================================================================================================
+; Name...........: __Word_COMErrFunc
+; Description ...: Dummy function for silently handling COM errors.
+; Syntax.........:
+; Parameters ....:
+; Return values .:
+;
+; Author ........:
+; Modified ......:
+; Remarks .......:
+; Related .......:
+; Link ..........:
+; Example .......:
+; ===============================================================================================================================
+Func __Word_COMErrFuncEx($oError)
+    ; Do anything here.
+    ConsoleWrite(@ScriptName & " (" & $oError.scriptline & ") : ==> COM Error intercepted !" & @CRLF & _
+            @TAB & "err.number is: " & @TAB & @TAB & "0x" & Hex($oError.number) & @CRLF & _
+            @TAB & "err.windescription:" & @TAB & $oError.windescription & @CRLF & _
+            @TAB & "err.description is: " & @TAB & $oError.description & @CRLF & _
+            @TAB & "err.source is: " & @TAB & @TAB & $oError.source & @CRLF & _
+            @TAB & "err.helpfile is: " & @TAB & $oError.helpfile & @CRLF & _
+            @TAB & "err.helpcontext is: " & @TAB & $oError.helpcontext & @CRLF & _
+            @TAB & "err.lastdllerror is: " & @TAB & $oError.lastdllerror & @CRLF & _
+            @TAB & "err.scriptline is: " & @TAB & $oError.scriptline & @CRLF & _
+            @TAB & "err.retcode is: " & @TAB & "0x" & Hex($oError.retcode) & @CRLF & @CRLF)
+EndFunc   ;==>__Word_COMErrFuncEx
